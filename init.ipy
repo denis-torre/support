@@ -1,0 +1,21 @@
+### Prepare
+# Python modules
+import pandas as pd
+import os, sys, glob, collections, gzip
+from IPython.display import HTML, Image
+
+# Custom modules
+%run /Users/denis/Documents/Projects/scripts/Support.ipy
+sys.path.append('/Users/denis/Documents/Projects/scripts')
+import Support as S
+
+# R
+%load_ext rpy2.ipython
+%R source('/Users/denis/Documents/Projects/scripts/Support.R')
+%R library(reshape2)
+%R library(gplots, quietly=TRUE, verbose=FALSE, warn.conflicts=FALSE)
+%R library(ggplot2, quietly=TRUE, verbose=FALSE, warn.conflicts=FALSE)
+
+from plotly.offline import init_notebook_mode, iplot
+from plotly.graph_objs import *
+init_notebook_mode()

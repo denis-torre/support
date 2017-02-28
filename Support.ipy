@@ -1,0 +1,285 @@
+#################################################################
+#################################################################
+############### Jupyter Support
+#################################################################
+#################################################################
+
+#############################################
+########## 1. Load libraries
+#############################################
+##### 1. General support #####
+import tempfile
+import numpy as np
+import pandas as pd
+from clustergrammer_widget import *
+
+##### 2. Other libraries #####
+
+
+#######################################################
+#######################################################
+########## S1. Plotting
+#######################################################
+#######################################################
+
+#############################################
+########## 1. plot3DPCA
+#############################################
+
+# Define function
+def plot3DPCA(expressionDataframe, annotationDataframe, categoricalColumn, annotationColumn=False, title='PCA Analysis', colors=['#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a','#ffff99','#b15928'], topVarianceGenes=False):
+
+    # Filter
+    if topVarianceGenes:
+
+        # Get gene variance
+        geneVariance = expressionDataframe.apply(np.var, 1).sort_values(ascending=False)
+
+        # Get top genes
+        topGenes = geneVariance.index[:topVarianceGenes].tolist()
+
+        # Get dataframe
+        expressionDataframe = expressionDataframe.loc[topGenes]
+
+    # Import dataframe
+    %R -i expressionDataframe
+
+    # Run PCA
+    %R pcaDataframe <- getPcaDataframe(expressionDataframe)
+
+    # Pull dataframe
+    %Rpull pcaDataframe
+
+    # Get variance label
+    varLabelDict = {x.split(' ')[0]:x for x in pcaDataframe.loc['varExplained'] if type(x) == str and 'PC' in x}
+
+    # Create plot dataframe
+    plotDataframe = pcaDataframe.merge(annotationDataframe, left_index=True, right_index=True)
+
+    # Create figure
+    fig = S.plot3dScatter(plotDataframe, categoricalColumn, varLabelDict, annotationColumn=annotationColumn, title=title, colors=colors)
+
+    # Return figure
+    iplot(fig)
+
+
+#############################################
+########## 2. Clustergrammer
+#############################################
+
+def plotClustergrammerWidget(expressionDataframe, annotationDataframe=False, annotationColumns=False, topVarianceGenes=1000, zscore=False):
+
+    # Define empty list
+    dataList = []
+
+    # Get common samples, if annotation dataframe is specified
+    if type(annotationDataframe) == pd.core.frame.DataFrame:
+        # Get common samples
+        commonSamples = set(expressionDataframe.columns).intersection(set(annotationDataframe.index))
+
+        # Intersect
+        expressionDataframe = expressionDataframe.loc[:,commonSamples]
+        annotationDataframe = annotationDataframe.loc[commonSamples,:]
+
+    # Get sample names
+    dataList.append(['']+[x for x in expressionDataframe.columns])
+
+    # Get annotation
+    if annotationColumns != False:
+        annotationColumns = [annotationColumns] if type(annotationColumns) != list else annotationColumns
+        for column in annotationColumns:
+            dataList.append(['']+[column+': '+str(x) for x in annotationDataframe[column]])
+
+
+    # Rank by variance
+    rankedGenes = expressionDataframe.apply(np.var, 1).sort_values(ascending=False).index.tolist()
+
+    # Add genes
+    for geneSymbol in rankedGenes[:topVarianceGenes]:
+        dataList.append(['Gene Symbol: '+geneSymbol]+[str(round(x, ndigits=2)) for x in expressionDataframe.loc[geneSymbol,:]])
+
+    # Create string
+    outfileString = '\n'.join(['\t'.join(x) for x in dataList])
+
+    # Write to file
+    with tempfile.NamedTemporaryFile(dir='.', delete=False) as openfile:
+        
+        # Write
+        openfile.write(outfileString)
+        
+    # Initialize network object
+    net = Network()
+
+    # load matrix file
+    net.load_file(openfile.name)
+
+    # Z-score transform
+    if zscore:
+        net.normalize(axis=zscore)
+
+    # cluster using default parameters
+    net.make_clust()
+
+    # Remove file
+    os.unlink(openfile.name)
+
+    # make interactive widget
+    return clustergrammer_widget(network=net.widget())
+
+
+#############################################
+########## 3. Cytoscape
+#############################################
+
+def plotCytoscapeNetwork(networkFile):
+
+    # Load modules
+    from py2cytoscape.data.cyrest_client import CyRestClient
+    import py2cytoscape.cytoscapejs as renderer
+
+    # Initialize client
+    cy = CyRestClient()
+
+    # Get network
+    cytoscapeNetwork = cy.network.create_from(networkFile)
+
+    # Create style
+    networkStyle = cy.style.create('networkStyle')
+
+    # Apply style
+    cy.style.apply(networkStyle, cytoscapeNetwork)
+
+    # Create view
+    networkView = cytoscapeNetwork.get_first_view()
+
+    # Get style
+    widgetStyle = cy.style.get(networkStyle.get_name(), data_format='cytoscapejs')
+
+    # Render network
+    renderer.render(networkView, style=widgetStyle['style'])
+
+#############################################
+########## 4. Pairwise Scatter
+#############################################
+
+def plotPairwiseScatter(xDataframe, yDataframe, indexColumn, valueColumn, annotationColumn=False, commonFilters={}, xFilters={}, yFilters={}, xlab='', ylab='', title='', xlim=None, ylim=None, cutoff=False, symm=True, size=700):
+    
+    # Define dataframe dict
+    dataDict = {'x': xDataframe, 'y': yDataframe}
+
+    # Define filter dict
+    filterDict = {'x': xFilters, 'y': yFilters}
+
+    # Loop through axes
+    for axis in ['x', 'y']:
+
+        # Update filter
+        filterDict[axis].update(commonFilters)
+
+        # Skip if filter doesn't exist
+        if len(filterDict.keys()) == 0:
+            continue
+
+        # Loop through filters
+        for filterKey, filterValue in filterDict[axis].iteritems():
+
+            # Filter dataframe
+            dataDict[axis] = dataDict[axis][dataDict[axis][filterKey] == filterValue]
+        
+        # Set index
+        dataDict[axis].set_index(indexColumn, inplace=True)
+            
+    # Get common index
+    commonIndex = list(set(dataDict['x'].index).intersection(set(dataDict['y'].index)))
+    
+    # Loop through axes
+    for axis in ['x', 'y']:
+        # Intersect
+        dataDict[axis] = dataDict[axis].loc[commonIndex]
+  
+    # Get annotations
+    annotationText = commonIndex
+    
+    # Add additional annotations
+    if annotationColumn:
+        
+        # Get annotations
+        annotationText = ['<br>'.join([str(x), str(y), str(z)]) for x, y, z in zip(commonIndex, dataDict['x'][annotationColumn],  dataDict['y'][annotationColumn])] if annotationColumn else ''
+
+    # Set symmetry
+    if symm == True:
+        
+        # Get maximum value
+        axisLim = float(max(dataDict['x'][valueColumn].tolist() + dataDict['y'][valueColumn].tolist()))*11/10
+        
+        # Set ranges
+        xlim = [0, axisLim]
+        ylim = [0, axisLim]
+        
+    # Create shapes
+    if cutoff:
+        shapes = [{'type': 'line', 'x0': 0, 'y0': cutoff, 'x1': axisLim, 'y1': cutoff, 'line': {'color': 'red', 'width': 1}},
+                  {'type': 'line', 'x0': cutoff, 'y0': 0, 'x1': cutoff, 'y1': axisLim, 'line': {'color': 'red', 'width': 1}}]
+    else:
+        shapes = []
+
+    # Add points over cutoff, if specified
+    if cutoff:
+
+        # Get terms which pass cutoff
+        xSignificantRows = set(np.where(dataDict['x'][valueColumn] > cutoff)[0])
+        ySignificantRows = set(np.where(dataDict['y'][valueColumn] > cutoff)[0])
+
+        # Get common rows
+        commonRows = list(xSignificantRows.intersection(ySignificantRows))
+
+        # Get significant annotation
+        significantAnnotationText = [annotationText[x] for x in commonRows]
+
+        # Drop annotation
+        for i in commonRows:
+            del annotationText[i]
+
+        # Add significant trace
+        significantTrace = Scatter(
+            x = dataDict['x'].ix[commonRows, valueColumn],
+            y = dataDict['y'].ix[commonRows, valueColumn],
+            mode = 'markers',
+            name = '',
+            marker = dict(
+                size = 9,
+                color = 'red'
+            ),
+            text = significantAnnotationText,
+            showlegend = False)
+
+        # Drop rows
+        dataDict['x'].drop(dataDict['x'].index[commonRows], axis=0, inplace=True)
+        dataDict['y'].drop(dataDict['y'].index[commonRows], axis=0, inplace=True)
+
+    # Initial trace
+    trace = Scatter(
+        x = dataDict['x'][valueColumn],
+        y = dataDict['y'][valueColumn],
+        name = '',
+        mode = 'markers',
+        text = annotationText,
+        showlegend = False)
+
+    # Get data
+    data = [trace, significantTrace] if cutoff else [trace]
+
+    # Layout
+    layout = Layout(
+        width=size+5,
+        height=size,
+        title = title,
+        hovermode = 'closest',
+        xaxis = dict(title=xlab, range=xlim),
+        yaxis = dict(title=ylab, range=ylim),
+        shapes = shapes
+    )
+
+    # Plot
+    fig = dict(data=data, layout=layout)
+    iplot(fig)
