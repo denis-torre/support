@@ -67,64 +67,85 @@ def plot3DPCA(expressionDataframe, annotationDataframe, categoricalColumn, annot
 ########## 2. Clustergrammer
 #############################################
 
-def plotClustergrammerWidget(expressionDataframe, annotationDataframe=False, annotationColumns=False, topVarianceGenes=1000, zscore=False):
+def plotClustergrammerWidget(expressionDataframe, annotationDataframe=False, annotationColumns=False, rowAnnotationDataframe=False, rowAnnotationColumns=False, topVarianceGenes=1000, zscore=False, topFun=np.var):
 
-    # Define empty list
-    dataList = []
+	# Define empty list
+	dataList = []
 
-    # Get common samples, if annotation dataframe is specified
-    if type(annotationDataframe) == pd.core.frame.DataFrame:
-        # Get common samples
-        commonSamples = set(expressionDataframe.columns).intersection(set(annotationDataframe.index))
+	# Get common samples, if annotation dataframe is specified
+	if type(annotationDataframe) == pd.core.frame.DataFrame:
+		# Get common samples
+		commonSamples = set(expressionDataframe.columns).intersection(set(annotationDataframe.index))
 
-        # Intersect
-        expressionDataframe = expressionDataframe.loc[:,commonSamples]
-        annotationDataframe = annotationDataframe.loc[commonSamples,:]
+		# Intersect
+		expressionDataframe = expressionDataframe.loc[:,commonSamples]
+		annotationDataframe = annotationDataframe.loc[commonSamples,:]
 
-    # Get sample names
-    dataList.append(['']+[x for x in expressionDataframe.columns])
+	# Get common genes, if annotation dataframe is specified
+	if type(rowAnnotationDataframe) == pd.core.frame.DataFrame:
+		# Get common genes
+		commonGenes = set(expressionDataframe.index).intersection(set(rowAnnotationDataframe.index))
 
-    # Get annotation
-    if annotationColumns != False:
-        annotationColumns = [annotationColumns] if type(annotationColumns) != list else annotationColumns
-        for column in annotationColumns:
-            dataList.append(['']+[column+': '+str(x) for x in annotationDataframe[column]])
+		# Intersect
+		expressionDataframe = expressionDataframe.loc[commonGenes,:]
+		rowAnnotationDataframe = rowAnnotationDataframe.loc[commonGenes,:]
 
+	# Get spacer, if row annotations are specified
+	if rowAnnotationColumns != False:
+		rowAnnotationColumns = rowAnnotationColumns if type(rowAnnotationColumns) == list else [rowAnnotationColumns]
+		spacerList = ['']*(len(rowAnnotationColumns) + 1)
+	else:
+		spacerList = ['']
 
-    # Rank by variance
-    rankedGenes = expressionDataframe.apply(np.var, 1).sort_values(ascending=False).index.tolist()
+	# Get sample names
+	dataList.append(spacerList+[x for x in expressionDataframe.columns])
 
-    # Add genes
-    for geneSymbol in rankedGenes[:topVarianceGenes]:
-        dataList.append(['Gene Symbol: '+geneSymbol]+[str(round(x, ndigits=2)) for x in expressionDataframe.loc[geneSymbol,:]])
+	# Rank by variance
+	rankedGenes = expressionDataframe.apply(np.var, 1).sort_values(ascending=False).index.tolist()
 
-    # Create string
-    outfileString = '\n'.join(['\t'.join(x) for x in dataList])
+	# Get column annotation
+	if annotationColumns != False:
+		annotationColumns = [annotationColumns] if type(annotationColumns) != list else annotationColumns
+		for column in annotationColumns:
+			dataList.append(spacerList+[column+': '+str(x) for x in annotationDataframe[column]])
 
-    # Write to file
-    with tempfile.NamedTemporaryFile(dir='.', delete=False) as openfile:
-        
-        # Write
-        openfile.write(outfileString)
-        
-    # Initialize network object
-    net = Network()
+	# Get row annotations
+	if rowAnnotationColumns != False:
+		rowAnnotationDict = {index: [': '.join([column + ': ' + rowAnnotationDataframe.loc[index, column]]) for column in rowAnnotationColumns] for index in rowAnnotationDataframe.index}
+	else:
+		rowAnnotationDict = {x: [] for x in rankedGenes}
 
-    # load matrix file
-    net.load_file(openfile.name)
+	# Add genes
+	for geneSymbol in rankedGenes[:topVarianceGenes]:
+		dataList.append(['Gene Symbol: '+geneSymbol]+rowAnnotationDict[geneSymbol]+[str(round(x, ndigits=2)) for x in expressionDataframe.loc[geneSymbol,:]])
 
-    # Z-score transform
-    if zscore:
-        net.normalize(axis=zscore)
+	# Create string
+	outfileString = '\n'.join(['\t'.join(x) for x in dataList])
 
-    # cluster using default parameters
-    net.make_clust()
+	# Write to file
+	with tempfile.NamedTemporaryFile(dir='.', delete=False) as openfile:
 
-    # Remove file
-    os.unlink(openfile.name)
+		# Write
+		openfile.write(outfileString)
 
-    # make interactive widget
-    return clustergrammer_widget(network=net.widget())
+	# Initialize network object
+	net = Network()
+
+	# load matrix file
+	net.load_file(openfile.name)
+
+	# Z-score transform
+	if zscore:
+		net.normalize(axis=zscore)
+
+	# cluster using default parameters
+	net.make_clust()
+
+	# Remove file
+	os.unlink(openfile.name)
+
+	# make interactive widget
+	return clustergrammer_widget(network=net.widget())
 
 
 #############################################
@@ -162,7 +183,7 @@ def plotCytoscapeNetwork(networkFile):
 ########## 4. Pairwise Scatter
 #############################################
 
-def plotPairwiseScatter(xDataframe, yDataframe, indexColumn, valueColumn, annotationColumn=False, commonFilters={}, xFilters={}, yFilters={}, xlab='', ylab='', title='', xlim=None, ylim=None, cutoff=False, symm=True, size=700):
+def plotPairwiseScatter(xDataframe, yDataframe, indexColumn, valueColumn, annotationColumn=False, commonFilters={}, xFilters={}, yFilters={}, xlab='', ylab='', title='', xlim=None, ylim=None, cutoff=False, symm=True, size=700, returnTraces=False):
     
     # Define dataframe dict
     dataDict = {'x': xDataframe, 'y': yDataframe}
@@ -268,6 +289,10 @@ def plotPairwiseScatter(xDataframe, yDataframe, indexColumn, valueColumn, annota
 
     # Get data
     data = [trace, significantTrace] if cutoff else [trace]
+
+    # Return traces
+    if returnTraces:
+        return data
 
     # Layout
     layout = Layout(

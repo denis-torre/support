@@ -329,6 +329,37 @@ runCharacteristicDirection <- function(expressionDataframe, experimentColumns, c
 	return(cdDataframe)
 }
 
+#############################################
+########## 2. runDESeq2
+#############################################
+
+runDESeq2 <- function(countDataframe, annotationDataframe, design='~ sample_type', fixColNames=TRUE) {
+
+	# Load library
+	require(DESeq2)
+
+	# Fix colnames
+	if (fixColNames == TRUE){
+		colnames(countDataframe) <- gsub('.', '-', colnames(countDataframe), fixed=TRUE)
+	}
+
+
+	# Prepare dds object
+	dds <- DESeqDataSetFromMatrix(countData = countDataframe, colData = annotationDataframe, design = as.formula(design))
+
+	# Filter
+	dds <- dds[rowSums(counts(dds)) > 1,]
+
+	# Run analysis
+	dds <- DESeq(dds)
+
+	# Get results
+	res <- as.data.frame(results(dds))
+
+	# Return results
+	return(res)
+}
+
 
 
 #######################################################
@@ -375,6 +406,28 @@ correlateMatrices <- function(matrix1, matrix2, method='pearson', use='everythin
 	return(cor(t(matrix1), matrix2, method=method, use=use))
 }
 
+#############################################
+########## 2. Survival Association
+#############################################
+
+getSurvivalAssociation <- function(survivalDataframe, groupDataframe) {
+
+	# Load library
+	require(survival)
+
+	# Create survival object
+	survivalObj <- Surv(time=survivalDataframe$last_checked, event=survivalDataframe$event)
+
+	# Get difference
+	sdiff <- survdiff(survivalObj ~ groupDataframe$group)
+
+	# Get p-value
+	p <- 1 - pchisq(sdiff$chisq, df=length(sdiff$n) - 1)
+
+	# Return
+	return(p)
+}
+
 #######################################################
 #######################################################
 ########## S7. L1000CDS2
@@ -385,10 +438,19 @@ correlateMatrices <- function(matrix1, matrix2, method='pearson', use='everythin
 ########## 1. Count small molecules
 #############################################
 
-getL1000CDS2Counts <- function(signatureDataframe, aggravate, group=FALSE, plot=TRUE, nDrugs=10, col=c('#fed976','#feb24c','#fd8d3c','#fc4e2a','#e31a1c','#bd0026','#800026'), main='', ylab='', order=FALSE, legendTitle=NULL) {
+getL1000CDS2Counts <- function(signatureDataframe, aggravate, group=FALSE, plot=TRUE, nDrugs=10, col=FALSE, main='', ylab='', order=FALSE, legendTitle=NULL) {
     
     # Filter
     signatureDataframeFiltered <- signatureDataframe[signatureDataframe$aggravate == aggravate,]
+
+    # Set colors
+    if (col == FALSE) {
+    	if (aggravate == TRUE) {
+    		col <- c('#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026')
+    	} else if (aggravate == FALSE) {
+    		col <- c('#f1eef6','#bdc9e1','#74a9cf','#2b8cbe','#045a8d')
+    	}
+    }
     
     # If group
     if (group != FALSE) {

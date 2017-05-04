@@ -1,8 +1,12 @@
 ### Prepare
 # Python modules
 import pandas as pd
-import os, sys, glob, collections, gzip
+import os, sys, glob, collections, gzip, urllib2, BeautifulSoup, xmltodict, StringIO
 from IPython.display import HTML, Image
+from lxml import etree
+from collections import Counter
+import scipy.stats as ss
+from IPython.display import HTML
 
 # Custom modules
 %run /Users/denis/Documents/Projects/scripts/Support.ipy
@@ -18,4 +22,5 @@ import Support as S
 
 from plotly.offline import init_notebook_mode, iplot
 from plotly.graph_objs import *
+import plotly.tools
 init_notebook_mode()

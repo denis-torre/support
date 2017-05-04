@@ -54,7 +54,7 @@ def plot3dScatter(dataframe, categoricalColumn, varLabelDict, annotationColumn=F
 	p = []
 
 	# Get unique categories
-	uniqueCategories = list(set(dataframe[categoricalColumn]))
+	uniqueCategories = list(dataframe[categoricalColumn].unique())
 
 	# Get dict with unique categories
 	categoricalExpressionDict = {x:dataframe[dataframe[categoricalColumn] == x] for x in uniqueCategories}
@@ -139,7 +139,7 @@ def addGeneLists(geneset):
 ########## 2. Get enrichment results
 #############################################
 
-def getEnrichmentResults(user_list_id, gene_set_library='GO_Biological_Process_2015'):
+def getEnrichmentResults(user_list_id, gene_set_library='GO_Biological_Process_2015', overlappingGenes=False):
 	ENRICHR_URL = 'http://amp.pharm.mssm.edu/Enrichr/enrich'
 	query_string = '?userListId=%s&backgroundType=%s'
 	response = requests.get(
@@ -150,7 +150,8 @@ def getEnrichmentResults(user_list_id, gene_set_library='GO_Biological_Process_2
 
 	data = json.loads(response.text)
 	resultDataframe = pd.DataFrame(data[gene_set_library], columns=['rank', 'term_name', 'pvalue', 'zscore', 'combined_score', 'overlapping_genes', 'FDR', 'old_pvalue', 'old_FDR'])
-	resultDataframe = resultDataframe.loc[:,['term_name','zscore','combined_score','FDR']]
+	selectedColumns = ['term_name','zscore','combined_score','FDR'] if not overlappingGenes else ['term_name','zscore','combined_score','FDR', 'overlapping_genes']
+	resultDataframe = resultDataframe.loc[:,selectedColumns]
 	return resultDataframe
 
 #############################################
@@ -294,6 +295,38 @@ def plot3DPCA(expressionDataframe, annotationDataframe, categoricalColumn, annot
 	# Return fig
 	return fig
 
+#######################################################
+#######################################################
+########## S6. GEO2Enrichr
+#######################################################
+#######################################################
+
+#############################################
+########## 1. API
+#############################################
+
+def submitG2E(dataset, platform, A_cols, B_cols, is_geo=True, diffexp_method='chdir', numgenes=500, threshold=0.05, normalize=True):
+
+	# Create dictionary
+	data = dict(dataset = dataset,
+				platform = platform,
+				A_cols = A_cols,
+				B_cols = B_cols,
+				is_geo = is_geo,
+				diffexp_method = diffexp_method,
+				numgenes = numgenes,
+				threshold = threshold,
+				normalize = normalize)
+
+	# Submit request
+	r = requests.post('http://amp.pharm.mssm.edu/g2e/api/extract/geo', data=data)
+
+	# Get extraction id
+	try:
+		extractionId = dict(r.json())['extraction_id']
+		return extractionId
+	except:
+		return None
 
 #######################################################
 #######################################################
